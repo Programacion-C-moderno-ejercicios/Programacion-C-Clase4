@@ -1,9 +1,65 @@
 #include "concesionario.h"
 #include <gtk/gtk.h>
+#include <string.h>
 
 struct concesionario **concesionarios;
 int id = 0;
 int con_activo;
+GtkWidget *ventana_activa = NULL;
+
+static void refresh_combo_concesionario(GtkWidget *combo)
+{
+	struct coche *c;
+	int num_coches =
+		curso_concesionario_attr_get_u32(concesionarios[con_activo],
+						 CURSO_CONCESIONARIO_ATTR_NUM_COCHES);
+
+	GList *opciones = NULL;
+	int i;
+	for(i = 0; i < num_coches; i++) {
+		c = curso_concesionario_attr_get_coche(concesionarios[con_activo],
+							CURSO_CONCESIONARIO_ATTR_COCHE, i);
+		char *str = calloc(50, sizeof(char));
+		sprintf(str, "%d - ", curso_coche_attr_get_u32(c, CURSO_COCHE_ATTR_ID));
+		sprintf(str, "%s%s - ", str, curso_coche_attr_get_str(c, CURSO_COCHE_ATTR_MARCA));
+		sprintf(str, "%s%s", str, curso_coche_attr_get_str(c, CURSO_COCHE_ATTR_MATRICULA));
+		opciones = g_list_append(opciones, str);
+	}
+	gtk_combo_set_popdown_strings(GTK_COMBO (combo), opciones);
+}
+
+static void remove_car(GtkButton *widget, gpointer data)
+{
+	GtkWidget *combo = (GtkWidget *) data;
+	const gchar *str = gtk_entry_get_text(GTK_ENTRY(GTK_COMBO(combo)->entry));
+	char str_final[50];
+	int id_car;
+	struct coche * c;
+
+	int i = 0;
+	for(i = 0; i < strlen(str); i++){
+		if ((int) str[i] <= (int) '9' || (int) str[i] >= (int) '0') {
+			str_final[i] = str[i];
+		} else {
+			str_final[i] = '\0';
+			break;
+		}
+	}
+	id_car = (int) strtol(str_final, NULL, 10);
+	int num_coches =
+		curso_concesionario_attr_get_u32(concesionarios[con_activo],
+						 CURSO_CONCESIONARIO_ATTR_NUM_COCHES);
+	for(i = 0; i < num_coches; i++){
+		struct coche *tmp =
+				curso_concesionario_attr_get_coche(concesionarios[con_activo],
+								   CURSO_CONCESIONARIO_ATTR_COCHE,
+								   i);
+		if(id_car == curso_coche_attr_get_u32(tmp, CURSO_COCHE_ATTR_ID))
+			curso_concesionario_attr_unset_coche(concesionarios[con_activo], i);
+	}
+	refresh_combo_concesionario(combo);
+	gtk_entry_set_text(GTK_ENTRY(GTK_COMBO(combo)->entry), "");
+}
 
 static void add_car(GtkButton *widget, gpointer data)
 {
@@ -37,17 +93,25 @@ static void add_car(GtkButton *widget, gpointer data)
 
 	gtk_entry_set_text((GtkEntry *)entry_ptr_marca, "");
 	gtk_entry_set_text((GtkEntry *)entry_ptr_matricula, "");
+
+	refresh_combo_concesionario(entry[2]);
 }
 
 static void show_concesionario(GtkButton *widget, gpointer data)
 {
 	GtkWidget *window;
 	GtkWidget *button;
+	GtkWidget *button_x;
 	GtkWidget *entry1, *entry2;
 	GtkWidget *box;
+	GtkWidget *hbox;
 	GtkWidget **entry;
+	GtkWidget *combo;
 
-	entry = calloc(1, 2 * sizeof(GtkWidget));
+	entry = calloc(1, 3 * sizeof(GtkWidget));
+
+	if(ventana_activa != NULL) gtk_widget_destroy(GTK_WIDGET(ventana_activa));
+
 
 	int i = 0;
 	for(i = 0; i < 10; i++){
@@ -55,22 +119,35 @@ static void show_concesionario(GtkButton *widget, gpointer data)
 	}
 	window = gtk_window_new(GTK_WINDOW_TOPLEVEL);
 	button = gtk_button_new_with_label("Add me");
+	button_x = gtk_button_new_with_label("X");
 	box = gtk_vbox_new(TRUE,2);
+	hbox = gtk_hbox_new(FALSE,2);
 	entry1 = gtk_entry_new();
 	entry2 = gtk_entry_new();
+	ventana_activa = window;
+
+	combo = gtk_combo_new();
+	refresh_combo_concesionario(combo);
 
 	entry[0] = entry1;
 	entry[1] = entry2;
+	entry[2] = combo;
 
-	gtk_box_pack_start ((GtkBox *)box, entry1, TRUE, TRUE, 2);
-	gtk_box_pack_start ((GtkBox *)box, entry2, TRUE, TRUE, 2);
+	gtk_box_pack_start((GtkBox *)hbox, combo, TRUE, TRUE, 2);
+	gtk_box_pack_start((GtkBox *)hbox, button_x, TRUE, TRUE, 2);
 
-	gtk_box_pack_start ((GtkBox *)box, button, TRUE, TRUE, 2);
+	gtk_box_pack_start((GtkBox *)box, hbox, TRUE, TRUE, 2);
+	gtk_box_pack_start((GtkBox *)box, entry1, TRUE, TRUE, 2);
+	gtk_box_pack_start((GtkBox *)box, entry2, TRUE, TRUE, 2);
+
+	gtk_box_pack_start((GtkBox *)box, button, TRUE, TRUE, 2);
 
 	gtk_container_add((GtkContainer *)window, box);
 
 	g_signal_connect((GObject *)button, "clicked", (GCallback)add_car,
 			 (gpointer)entry);
+	g_signal_connect((GObject *)button_x, "clicked", (GCallback)remove_car,
+			 (gpointer)combo);
 	gtk_widget_show_all(window);
 }
 
